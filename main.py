@@ -2,11 +2,13 @@ from fastapi import FastAPI, Query, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 import google.generativeai as genai
-from google.ai import generativelanguage as types
+from google import genai as direct_genai
+from google.genai.types import Tool, GenerateContentConfig, GoogleSearch
+from google.genai import types
 import os
 from dotenv import load_dotenv
 import uvicorn
-from typing import Optional
+from typing import Optional, List, Dict
 
 # 載入環境變數
 load_dotenv()
@@ -49,6 +51,15 @@ class VideoSummary(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: str
+
+# 定義 Grounding 請求和回應模型
+class GroundingRequest(BaseModel):
+    query: str
+    use_url_context: bool = True
+    use_google_search: bool = True
+
+class GroundingResponse(BaseModel):
+    summary: str
 
 # 檢查 API 金鑰函數
 def verify_api_key():
@@ -111,6 +122,52 @@ def summarize_youtube_video_post(
             ]
         )
         return {"summary": response.text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/grounding", response_model=GroundingResponse, responses={500: {"model": ErrorResponse}})
+def grounding_query(
+    request: GroundingRequest,
+    _: bool = Depends(verify_api_key)
+):
+    """
+    使用 Gemini 模型處理查詢，可選使用 URL 上下文和 Google 搜索工具進行資訊檢索
+    
+    - **request**: 包含查詢和工具使用選項的請求
+    
+    回傳:
+    - **response**: Gemini 的回應
+    - **url_context_metadata**: URL 上下文元數據（如果使用了 URL 上下文工具）
+    """
+    try:
+        # 使用直接客戶端方式
+        client = direct_genai.Client(api_key=API_KEY)
+        model_id = "gemini-2.5-flash-preview-05-20"
+        
+        tools = []
+        if request.use_url_context:
+            tools.append(Tool(url_context=types.UrlContext))
+        if request.use_google_search:
+            tools.append(Tool(google_search=types.GoogleSearch))
+        
+        response = client.models.generate_content(
+            model=model_id,
+            contents=request.query,
+            config=GenerateContentConfig(
+                tools=tools,
+                response_modalities=["TEXT"],
+            )
+        )
+        
+        # 處理回應
+        result_text = ""
+        for part in response.candidates[0].content.parts:
+            if hasattr(part, 'text'):
+                result_text += part.text
+        
+        return {
+            "summary": result_text,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
