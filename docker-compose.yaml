@@ -1,0 +1,52 @@
+services:
+  gemini-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gemini-api-standalone
+    restart: unless-stopped
+    ports:
+      - "8001:8001"  # 內外部都使用 8001 端口
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    env_file:
+      - .env
+    volumes:
+      - ./image:/app/image  # 掛載圖片存儲目錄
+      - ./uploads:/app/uploads  # 如果有上傳功能的話
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nginx:
+    image: nginx:alpine
+    container_name: gemini-nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./image:/app/image:ro  # 只读挂载图片目录
+    networks:
+      - backend
+    depends_on:
+      - gemini-api
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  backend:
+    external: true
+    name: n8n-compose_firecrawl-net
+
+volumes:
+  gemini-data:
