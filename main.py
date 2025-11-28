@@ -183,10 +183,16 @@ def grounding_query(
     """
     try:
         client = direct_genai.Client(api_key=API_KEY)
-        tools = [Tool(google_search=types.GoogleSearch())] if request.use_google_search else []
+        model_id = "gemini-2.5-flash-preview-05-20"
+        
+        tools = []
+        # if request.use_url_context:
+        #     tools.append(Tool(url_context=types.UrlContext))
+        if request.use_google_search:
+            tools.append(Tool(google_search=types.GoogleSearch))
         
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=model_id,
             contents=request.query,
             config=GenerateContentConfig(tools=tools)
         )
